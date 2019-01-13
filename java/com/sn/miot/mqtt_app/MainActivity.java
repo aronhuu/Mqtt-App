@@ -1,12 +1,9 @@
 package com.sn.miot.mqtt_app;
 
-import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
-import android.support.annotation.NonNull;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
+import android.support.v7.app.AppCompatActivity;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -14,10 +11,10 @@ import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.ListView;
-import android.widget.SearchView;
-import android.widget.TextView;
 
 import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.components.Legend;
+import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
@@ -34,43 +31,38 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 
-import java.io.UnsupportedEncodingException;
-import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
+    //Mqtt data
     private static final String SUBSCRIBE_TOPIC = "test";
     private static final String PUBLISH_TOPIC="test";
-
     final String serverUri = "tcp://192.168.1.63:1883";
-    TextView tV;
-    MqttAndroidClient mqttAndroidClient;
-    private Menu menu;
+    private String publishMessage="";
+    private String status=""; //connection status
+    private MqttAndroidClient mqttAndroidClient;
+
+    //Layout
     private MenuItem infoTV;
-    private String status="";
-    String publishMessage="ds";
-    ArrayAdapter adapter;
-    ListView lv;
-
-    //****Datasets
-    List<Entry> temperature= new ArrayList<>();
-    List<Entry> humidity = new ArrayList<>();
-    List<Entry> pression = new ArrayList<>();
-    List<Entry> battery = new ArrayList<>();
-    List<Entry> xAxis = new ArrayList<>();
-    List<Entry> yAxis = new ArrayList<>();
-    List<Entry> zAxis = new ArrayList<>();
-    int flagSensors=0x00;
-    LineChart lChart;
-    private LineDataSet tempDataSet, humDataSet, pressDataSet, battDataSet, accXDataSet, accYDataSet, accZDataSet;
-    private LineData lineData;
-
-    private ArrayList<String> messages=new ArrayList<String>();
+    private ListView lv;
+    private LineChart lChart;
     private CheckBox tempCheck, humidCheck, pressCheck, battCheck, accelCheck;
+
+    //Datasets
+    private List<Entry> temperature= new ArrayList<>();
+    private List<Entry> humidity = new ArrayList<>();
+    private List<Entry> pression = new ArrayList<>();
+    private List<Entry> battery = new ArrayList<>();
+    private List<Entry> xAxis = new ArrayList<>();
+    private List<Entry> yAxis = new ArrayList<>();
+    private List<Entry> zAxis = new ArrayList<>();
+    private LineDataSet tempDataSet, humDataSet, pressDataSet, battDataSet, accXDataSet, accYDataSet, accZDataSet;
+
+    //Messages for listview
+    private ArrayList<String> messages=new ArrayList<String>();
+    private ArrayAdapter adapter;
     MessageData messageData= new MessageData();
 
     @Override
@@ -78,11 +70,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        //Elements from the layout
+        //setting chart
         lChart = findViewById(R.id.chart);
-        lChart.setNoDataText("Waiting for messages");
+        lChart.setNoDataText("Waiting for messages...");
         lChart.setNoDataTextColor(Color.BLACK);
+        lChart.getDescription().setEnabled(false);
+        lChart.setScaleX(1);
+        lChart.getAxisLeft().setEnabled(false);
+        lChart.getAxisLeft().setDrawGridLines(false);
+        lChart.getAxisRight().setEnabled(false);
+        lChart.setScaleEnabled(false);
+        lChart.getLegend().setWordWrapEnabled(true);
+        lChart.getLegend().setVerticalAlignment(Legend.LegendVerticalAlignment.TOP);
+        lChart.getLegend().setHorizontalAlignment(Legend.LegendHorizontalAlignment.CENTER);
+        XAxis xAxis = lChart.getXAxis();
+        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
 
+        //Data test
         temperature.add(new Entry(0, (12)));
         temperature.add(new Entry(1, (15)));
         temperature.add(new Entry(2, (13)));
@@ -95,29 +99,27 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         startMeasures();
 
+        //setting listview
         lv = findViewById(R.id.listView);
         adapter = new myAdapter(this,  messageData.getMessageList());
         lv.setAdapter(adapter);
         lv.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
         lv.setDivider(new ColorDrawable(Color.parseColor("#00000000")));
-        lv.setDivider(new ColorDrawable(Color.parseColor("#00000000")));
-//        lv.setBackgroundDrawable(this.getResources().getDrawable(R.drawable.item_green));
         lv.setDividerHeight(20);
 
-
-
-
-        tempCheck = (CheckBox)findViewById(R.id.tempCheck);
+        //setting listener to checkboxes
+        tempCheck = findViewById(R.id.tempCheck);
         tempCheck.setOnClickListener(this);
-        humidCheck = (CheckBox)findViewById(R.id.humidCheck);
+        humidCheck = findViewById(R.id.humidCheck);
         humidCheck.setOnClickListener(this);
-        pressCheck = (CheckBox)findViewById(R.id.pressCheck);
+        pressCheck = findViewById(R.id.pressCheck);
         pressCheck.setOnClickListener(this);
-        battCheck = (CheckBox)findViewById(R.id.battCheck);
+        battCheck = findViewById(R.id.battCheck);
         battCheck.setOnClickListener(this);
-        accelCheck = (CheckBox)findViewById(R.id.accelCheck);
+        accelCheck = findViewById(R.id.accelCheck);
         accelCheck.setOnClickListener(this);
 
+        //connecting to mqtt broker
         String clientId = MqttClient.generateClientId();
         mqttAndroidClient = new MqttAndroidClient(getApplicationContext(), serverUri, clientId);
         mqttAndroidClient.setCallback(new MqttCallbackExtended() {
@@ -127,7 +129,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 if (reconnect) {
                     updateMenu("reconnected");
                     addToList("Reconnected to : " + serverURI);
-                    // Because Clean Session is true, we need to re-subscribe
                     subscribeToTopic();
                 } else {
                     updateMenu("connected");
@@ -157,9 +158,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mqttConnectOptions.setCleanSession(false);
 
         try {
-            //addToList("Connecting to " + serverUri);
+            addToList("Connecting to " + serverUri);
             updateMenu("connecting...");
-            addToList("Connecting...");
 
             mqttAndroidClient.connect(mqttConnectOptions, null, new IMqttActionListener() {
                 @Override
@@ -186,7 +186,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-
+    //---------- Adding all the datasets to chart ---------
     private void startMeasures(){
 
         lChart.setData(new LineData());
@@ -208,6 +208,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         addDataSet(zAxis,accZDataSet,Color.BLACK);
     }
 
+    //----------- Adding 1 dataset to chart -------------
     private void addDataSet(List<Entry> value, LineDataSet lineDataSet, int color) {
         LineData lineData = lChart.getData();
 
@@ -216,7 +217,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             lineDataSet.setColor(color);
             lineDataSet.setCircleColor(color);
             lineDataSet.setLineWidth(1f);
-            //lineDataSet.setCircleSize(4f);
             lineDataSet.setFillAlpha(65);
 
             lineData.addDataSet(lineDataSet);
@@ -228,6 +228,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    //------------ Removing dataset from chart ----------
     protected void removeDataSet( LineDataSet lineDataSet) {
         LineData lineData = lChart.getData();
 
@@ -242,10 +243,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     }
 
-    //----------------------Menu bar functions--------------------------
+    //-------- Configuring dataset properties --------
+    public LineDataSet getDataSet(List<Entry> data, String label){
+        LineDataSet dataSet;
+
+        dataSet = new LineDataSet(data,label);
+        dataSet.setDrawValues(true);
+        dataSet.setValueTextSize(10);
+        dataSet.setDrawCircles(true);
+        dataSet.setMode(LineDataSet.Mode.CUBIC_BEZIER);
+        dataSet.setHighlightEnabled(false);
+
+        return dataSet;
+    }
+
+    //---------------- Menu bar function ---------------
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        this.menu=menu;
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.menu_search, menu);
         infoTV = menu.findItem(R.id.info);
@@ -254,35 +268,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return super.onCreateOptionsMenu(menu);
     }
 
-    public LineDataSet getDataSet(List<Entry> data, String label){
-        LineDataSet dataSet1;
-
-        dataSet1 = new LineDataSet(data,label);
-        dataSet1.setDrawValues(true);
-        dataSet1.setValueTextSize(10);
-        dataSet1.setDrawCircles(true);
-        dataSet1.setMode(LineDataSet.Mode.CUBIC_BEZIER);
-        dataSet1.setHighlightEnabled(false);
-
-        return dataSet1;
-    }
-
-
+    //---------- updating text in menu ------
     private void updateMenu(String text){
         status=text;
         invalidateOptionsMenu();
     }
-    
+
+    //---------- Adding message to listview -----
     private void addToList(String mainText){
         messages.add(mainText);
         messageData.addData(mainText);
         adapter.notifyDataSetChanged();
         lv.invalidateViews();
 
-
         System.out.println("LOG: " + mainText);
     }
 
+    //---------- Subscribe to topic ----------
     public void subscribeToTopic(){
         try {
             mqttAndroidClient.subscribe(SUBSCRIBE_TOPIC, 0, null, new IMqttActionListener() {
@@ -313,22 +315,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    public void publishMessage(){
+    //-------- publishing message to topic ------------
+//    public void publishMessage(){
+//
+//        try {
+//            MqttMessage message = new MqttMessage();
+//            message.setPayload(publishMessage.getBytes());
+//            mqttAndroidClient.publish(PUBLISH_TOPIC, message);
+//            addToList("Message Published");
+//            if(!mqttAndroidClient.isConnected()){
+//                addToList(mqttAndroidClient.getBufferedMessageCount() + " messages in buffer.");
+//            }
+//        } catch (MqttException e) {
+//            System.err.println("Error Publishing: " + e.getMessage());
+//            e.printStackTrace();
+//        }
+//    }
 
-        try {
-            MqttMessage message = new MqttMessage();
-            message.setPayload(publishMessage.getBytes());
-            mqttAndroidClient.publish(PUBLISH_TOPIC, message);
-            addToList("Message Published");
-            if(!mqttAndroidClient.isConnected()){
-                addToList(mqttAndroidClient.getBufferedMessageCount() + " messages in buffer.");
-            }
-        } catch (MqttException e) {
-            System.err.println("Error Publishing: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
+    //--------- Listener for checkboxes--------
     @Override
     public void onClick(View v) {
 
@@ -368,7 +372,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
     }
-
 }
 
 
