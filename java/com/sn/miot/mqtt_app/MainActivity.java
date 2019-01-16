@@ -1,5 +1,6 @@
 package com.sn.miot.mqtt_app;
 
+import android.app.Activity;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
@@ -15,9 +16,11 @@ import android.widget.ListView;
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.Legend;
 import com.github.mikephil.charting.components.XAxis;
+import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
+import com.google.gson.Gson;
 
 import org.eclipse.paho.android.service.MqttAndroidClient;
 import org.eclipse.paho.client.mqttv3.DisconnectedBufferOptions;
@@ -39,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     //Mqtt data
     private static final String SUBSCRIBE_TOPIC = "test";
     private static final String PUBLISH_TOPIC="test";
-    final String serverUri = "tcp://192.168.1.63:1883";
+    final String serverUri = "tcp://192.168.123.1:1883";
     private String publishMessage="";
     private String status=""; //connection status
     private MqttAndroidClient mqttAndroidClient;
@@ -49,21 +52,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private ListView lv;
     private LineChart lChart;
     private CheckBox tempCheck, humidCheck, pressCheck, battCheck, accelCheck;
+    Gson gson = new Gson();
+
 
     //Datasets
     private List<Entry> temperature= new ArrayList<>();
     private List<Entry> humidity = new ArrayList<>();
     private List<Entry> pression = new ArrayList<>();
     private List<Entry> battery = new ArrayList<>();
-    private List<Entry> xAxis = new ArrayList<>();
-    private List<Entry> yAxis = new ArrayList<>();
-    private List<Entry> zAxis = new ArrayList<>();
+    private List<Entry> xData = new ArrayList<>();
+    private List<Entry> yData = new ArrayList<>();
+    private List<Entry> zData = new ArrayList<>();
     private LineDataSet tempDataSet, humDataSet, pressDataSet, battDataSet, accXDataSet, accYDataSet, accZDataSet;
+    LineData lineData;
 
     //Messages for listview
     private ArrayList<String> messages=new ArrayList<String>();
     private ArrayAdapter adapter;
     MessageData messageData= new MessageData();
+    int messageCount=0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,30 +81,39 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         lChart = findViewById(R.id.chart);
         lChart.setNoDataText("Waiting for messages...");
         lChart.setNoDataTextColor(Color.BLACK);
+
+
         lChart.getDescription().setEnabled(false);
-        lChart.setScaleX(1);
-        lChart.getAxisLeft().setEnabled(false);
-        lChart.getAxisLeft().setDrawGridLines(false);
-        lChart.getAxisRight().setEnabled(false);
-        lChart.setScaleEnabled(false);
-        lChart.getLegend().setWordWrapEnabled(true);
-        lChart.getLegend().setVerticalAlignment(Legend.LegendVerticalAlignment.TOP);
-        lChart.getLegend().setHorizontalAlignment(Legend.LegendHorizontalAlignment.CENTER);
+//        lChart.setScaleX(1);
+//        lChart.getAxisLeft().setEnabled(false);
+//        lChart.getAxisLeft().setDrawGridLines(false);
+//        lChart.getAxisRight().setEnabled(false);
+//        //lChart.setScaleEnabled(false);
+//        lChart.setAutoScaleMinMaxEnabled(true);
+//        lChart.getLegend().setWordWrapEnabled(true);
+//        lChart.getLegend().setVerticalAlignment(Legend.LegendVerticalAlignment.TOP);
+//        lChart.getLegend().setHorizontalAlignment(Legend.LegendHorizontalAlignment.CENTER);
         XAxis xAxis = lChart.getXAxis();
         xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+        xAxis.setAxisMaximum(50);
+        xAxis.setAxisMinimum(0);
+        YAxis yAxis = lChart.getAxisLeft();
+        //lChart.setVisibleYRangeMaximum(150, YAxis.AxisDependency.LEFT);
 
-        //Data test
-        temperature.add(new Entry(0, (12)));
-        temperature.add(new Entry(1, (15)));
-        temperature.add(new Entry(2, (13)));
-        humidity.add(new Entry(0, (6)));
-        humidity.add(new Entry(1, (5)));
-        humidity.add(new Entry(2, (7)));
-        pression.add(new Entry(0, (26)));
-        pression.add(new Entry(1, (53)));
-        pression.add(new Entry(2, (23)));
+        yAxis.setAxisMaximum(100);
+        yAxis.setAxisMinimum(0);
+        //lChart.setScaleMinima(200,200);
+        //lChart.setVisibleYRangeMaximum(100,YAxis.AxisDependency.LEFT);
+        //lChart.setVisibleYRangeMinimum(0,YAxis.AxisDependency.LEFT);
 
-        startMeasures();
+        temperature.add(new Entry(0,0));
+        humidity.add(new Entry(0,0));
+        pression.add(new Entry(0,0));
+        battery.add(new Entry(0,0));
+        xData.add(new Entry(0,0));
+        yData.add(new Entry(0,0));
+        zData.add(new Entry(0,0));
+
 
         //setting listview
         lv = findViewById(R.id.listView);
@@ -119,6 +135,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         accelCheck = findViewById(R.id.accelCheck);
         accelCheck.setOnClickListener(this);
 
+
+//        lChart.setData(lineData);
+
+        startMeasures();
+
         //connecting to mqtt broker
         String clientId = MqttClient.generateClientId();
         mqttAndroidClient = new MqttAndroidClient(getApplicationContext(), serverUri, clientId);
@@ -133,6 +154,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 } else {
                     updateMenu("connected");
                     addToList("Connected to: " + serverURI);
+                    subscribeToTopic();
                 }
             }
 
@@ -189,23 +211,46 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     //---------- Adding all the datasets to chart ---------
     private void startMeasures(){
 
-        lChart.setData(new LineData());
+        tempDataSet = getDataSet(temperature,"Temperature",Color.GREEN);
+        humDataSet = getDataSet(humidity,"Humidity",Color.BLUE);
+        pressDataSet = getDataSet(pression,"Pression",Color.RED);
+        battDataSet = getDataSet(battery,"Battery",Color.YELLOW);
+        accXDataSet = getDataSet(xData,"X Axis", Color.MAGENTA);
+        accYDataSet = getDataSet(yData,"Y Axis", Color.CYAN);
+        accZDataSet = getDataSet(zData,"Z Axis", Color.BLACK);
+        lineData=new LineData(tempDataSet,humDataSet,pressDataSet,battDataSet,accXDataSet,accYDataSet,accZDataSet);
+        lChart.setData(lineData);
 
-        tempDataSet = getDataSet(temperature,"Temperature");
-        humDataSet = getDataSet(humidity,"Humidity");
-        pressDataSet = getDataSet(pression,"Pression");
-        battDataSet = getDataSet(battery,"Battery");
-        accXDataSet = getDataSet(xAxis,"X Axis");
-        accYDataSet = getDataSet(yAxis,"Y Axis");
-        accZDataSet = getDataSet(zAxis,"Z Axis");
+        if(tempCheck.isChecked())
+            tempDataSet.setVisible(true);
+        else
+            tempDataSet.setVisible(false);
 
-        addDataSet(temperature,tempDataSet,Color.GREEN);
-        addDataSet(humidity,humDataSet,Color.BLUE);
-        addDataSet(pression,pressDataSet,Color.RED);
-        addDataSet(battery,battDataSet,Color.YELLOW);
-        addDataSet(xAxis,accXDataSet,Color.MAGENTA);
-        addDataSet(yAxis,accYDataSet,Color.CYAN);
-        addDataSet(zAxis,accZDataSet,Color.BLACK);
+        if(humidCheck.isChecked())
+            humDataSet.setVisible(true);
+        else
+            humDataSet.setVisible(false);
+
+        if(pressCheck.isChecked())
+            pressDataSet.setVisible(true);
+        else
+            pressDataSet.setVisible(false);
+
+        if(battCheck.isChecked())
+            battDataSet.setVisible(true);
+        else
+            battDataSet.setVisible(false);
+
+        if(accelCheck.isChecked()) {
+            accXDataSet.setVisible(true);
+            accYDataSet.setVisible(true);
+            accZDataSet.setVisible(true);
+        }
+        else{
+            accXDataSet.setVisible(false);
+            accYDataSet.setVisible(false);
+            accZDataSet.setVisible(false);
+        }
     }
 
     //----------- Adding 1 dataset to chart -------------
@@ -228,31 +273,43 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    public void showData( LineDataSet lineDataSet){
+        lineDataSet.setVisible(true);
+        lChart.notifyDataSetChanged();
+        lChart.invalidate();
+        //lChart.animateX(500);
+    }
+
     //------------ Removing dataset from chart ----------
     protected void removeDataSet( LineDataSet lineDataSet) {
         LineData lineData = lChart.getData();
 
         if (lineData != null) {
-
-            lineData.removeDataSet(lineDataSet);
-
+            lineDataSet.setVisible(false);
+//            lineData.removeDataSet(lineDataSet);
+//
             lChart.notifyDataSetChanged();
             lChart.invalidate();
-            lChart.animateX(500);
+            //lChart.animateX(500);
         }
 
     }
 
     //-------- Configuring dataset properties --------
-    public LineDataSet getDataSet(List<Entry> data, String label){
+    public LineDataSet getDataSet(List<Entry> data, String label, int color){
         LineDataSet dataSet;
 
         dataSet = new LineDataSet(data,label);
-        dataSet.setDrawValues(true);
-        dataSet.setValueTextSize(10);
+        dataSet.setDrawValues(false);
+        //dataSet.setValueTextSize(10);
         dataSet.setDrawCircles(true);
         dataSet.setMode(LineDataSet.Mode.CUBIC_BEZIER);
         dataSet.setHighlightEnabled(false);
+
+        dataSet.setColor(color);
+        dataSet.setCircleColor(color);
+        dataSet.setLineWidth(1f);
+        dataSet.setFillAlpha(65);
 
         return dataSet;
     }
@@ -279,7 +336,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         messages.add(mainText);
         messageData.addData(mainText);
         adapter.notifyDataSetChanged();
-        lv.invalidateViews();
+        //lv.invalidateViews();
 
         System.out.println("LOG: " + mainText);
     }
@@ -304,8 +361,29 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 @Override
                 public void messageArrived(String topic, MqttMessage message) throws Exception {
                     // message Arrived!
-                    System.out.println("Message: " + topic + " : " + new String(message.getPayload()));
-                    addToList("Message: " + topic + " : " + new String(message.getPayload()));
+                    String msg =new String(message.getPayload());
+                    System.out.println("***********************************");
+                    System.out.println("Message: " + topic + " : " + msg);
+                    String s1="{\"t\":25.6,\"h\":60.01,\"p\":97789.90,\"bL\":60,\"accX\":108,\"accY\":-267,\"accZ\":900}";
+//                    System.out.println(s1);
+                    MessageContentClass messageContent = gson.fromJson(msg, MessageContentClass.class);
+
+//                    String s = "http://api.thingspeak.com/update?apikey=57DMCLT0NQXN1UVY&t=" + messageContent.getTemp() + //o Float.toString(messageContent.getTemp());
+//                            "&h=" + messageContent.getHumd() + //o Float.toString(messageContent.getHumd());
+//                            "&p=" + messageContent.getPres() + //o Float.toString(messageContent.getPres());
+//                            "&bL=" + messageContent.getBatteryLevel() + //o Float.toString(messageContent.getBatteryLevel());
+//                            "&accX=" + messageContent.getAccX() + //o Float.toString(messageContent.getAccX());
+//                            "&accY=" + messageContent.getAccY() + //o Float.toString(messageContent.getAccY());
+//                            "&accZ=" + messageContent.getAccZ(); //o Float.toString(messageContent.getAccZ());
+//                    System.out.println(messageContent);
+                    System.out.println(""+ messageContent.t+","+messageContent.h+","+messageContent.p+","+messageContent.bL+","+messageContent.accX+","+messageContent.accY+","+messageContent.accZ);
+                    messageCount++;
+                    System.out.print(messageCount);
+                    System.out.println("***********************************");
+                    addToList("Message: " + topic + " : " + msg );
+                    addEntry2Dataset((float)messageCount,messageContent);
+
+
                 }
             });
 
@@ -315,6 +393,29 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    private void addEntry2Dataset(float index, MessageContentClass msgContent){
+        //Data test
+        temperature.add(new Entry(index,msgContent.t));
+        humidity.add(new Entry(index,msgContent.h));
+        pression.add(new Entry(index,msgContent.p));
+        battery.add(new Entry(index,msgContent.bL));
+        xData.add(new Entry(index,msgContent.accX));
+        yData.add(new Entry(index,msgContent.accY));
+        zData.add(new Entry(index,msgContent.accZ));
+//        startMeasures();
+
+        lineData.notifyDataChanged();
+        lChart.notifyDataSetChanged();
+        lChart.invalidate();
+        lv.invalidateViews();
+
+
+        //lChart.animateX(500);
+        //lChart.fitScreen();
+        //lChart.setAutoScaleMinMaxEnabled(true);
+
+
+    }
     //-------- publishing message to topic ------------
 //    public void publishMessage(){
 //
@@ -338,33 +439,33 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         if(v==tempCheck) {
             if(tempCheck.isChecked()){
-                addDataSet(temperature,tempDataSet,Color.GREEN);
+                showData(tempDataSet);
             }else{
                 removeDataSet(tempDataSet);
             }
         } else if(v==humidCheck) {
             if(humidCheck.isChecked()){
-                addDataSet(humidity,humDataSet,Color.BLUE);
+                showData(humDataSet);
             }else{
                 removeDataSet(humDataSet);
             }
         } else if (v==pressCheck) {
             if(pressCheck.isChecked()){
-                addDataSet(pression,pressDataSet,Color.RED);
+                showData(pressDataSet);
             }else{
                 removeDataSet(pressDataSet);
             }
         } else if (v==battCheck) {
             if(battCheck.isChecked()){
-                addDataSet(battery,battDataSet,Color.YELLOW);
+                showData(battDataSet);
             }else{
                 removeDataSet(battDataSet);
             }
         } else if (v==accelCheck) {
             if(accelCheck.isChecked()){
-                addDataSet(xAxis,accXDataSet,Color.MAGENTA);
-                addDataSet(yAxis,accYDataSet,Color.CYAN);
-                addDataSet(zAxis,accZDataSet,Color.BLACK);
+                showData(accXDataSet);
+                showData(accYDataSet);
+                showData(accZDataSet);
             }else{
                 removeDataSet(accXDataSet);
                 removeDataSet(accYDataSet);
