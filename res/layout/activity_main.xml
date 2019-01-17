@@ -11,11 +11,36 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
+
+        <RadioGroup
+            android:id="@+id/radioGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/endNode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:text="end_node" />
+
+            <RadioButton
+                android:id="@+id/gateway"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="gateway" />
+        </RadioGroup>
+
+
         <com.github.mikephil.charting.charts.LineChart
             android:id="@+id/chart"
             android:layout_width="match_parent"
             android:layout_height="197dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="5dp"
             android:layout_alignParentTop="true" >
 
         </com.github.mikephil.charting.charts.LineChart>

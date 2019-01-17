@@ -1,7 +1,8 @@
 package com.sn.miot.mqtt_app;
 
 public class MessageContentClass {
-	
+
+	String moteID;
 	float t;
 	float h;
 	float p;
@@ -40,6 +41,6 @@ public class MessageContentClass {
 	
 	@Override
 	public String toString() {
-		return "Message[temp=" + t + ", humd=" + h + ", pres=" + p + ", batteryLevel=" + bL + ", AccX=" + accX + ", AccY=" + accY + ", AccZ=" + accZ +"]";
+		return "Message "+moteID+" [temp=" + t + ", humd=" + h + ", pres=" + p + ", batteryLevel=" + bL + ", AccX=" + accX + ", AccY=" + accY + ", AccZ=" + accZ +"]";
 	}
 }
